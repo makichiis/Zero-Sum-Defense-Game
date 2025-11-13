@@ -127,6 +127,7 @@
     const TURN_NEXUS_PLACEMENTS = 0;
     const TURN_PHASE_ECONOMY = 1;
     const TURN_PHASE_ATTACK = 2;
+    const TURN_PHASE_END_TURN = 3;
 
     const POOL_MAXIMUM = 10;
 
@@ -315,51 +316,54 @@
       initSideGridBuildings();
     }
 
-    let sideGridBuildings = {}; // global reference
-    function initSideGridBuildings() {
-      sideGridBuildings = {
-        NEXUS: [],
-        PYLON: [],
-        DIAGONAL_MIRROR: [],
-        HORIZONTAL_MIRROR: []
-      };
+let sideGridBuildings = {}; // global reference
 
-      const layout = [
-        { key: 'NEXUS', count: 2, color: new Color(0.9, 0.3, 0.9) },
-        { key: 'PYLON', count: 4, color: new Color(1.0, 0.6, 0.1) },
-        { key: 'DIAGONAL_MIRROR', count: 4, color: new Color(0.4, 0.8, 1.0) },
-        { key: 'HORIZONTAL_MIRROR', count: 4, color: new Color(0.6, 1.0, 0.6) },
-      ];
+function initSideGridBuildings() {
+  sideGridBuildings = {
+    NEXUS: [],
+    PYLON: [],
+    DIAGONAL_MIRROR: [],
+    HORIZONTAL_MIRROR: []
+  };
 
-      // Fill cells row by row
-      let gx = 0, gy = 0;
-      const maxCols = sideGridCols;
-      const objectSize = vec2(cellSize * 0.6);
+  const layout = [
+    // { key: 'NEXUS', count: 2, color: new Color(0.9, 0.3, 0.9) }, // purple 
+    { key: 'PYLON', count: 4, color: new Color(1.0, 0.6, 0.1) }, // orange 
+    { key: 'DIAGONAL_MIRROR', count: 4, color: new Color(0.4, 0.8, 1.0) }, // blue 
+    { key: 'HORIZONTAL_MIRROR', count: 4, color: new Color(0.6, 1.0, 0.6) }, // green 
+  ];
 
-      for (const { key, count, color } of layout) {
-        for (let i = 0; i < count; i++) {
-          const pos = sideGridToWorld(gx, gy);
+  // Fill cells row by row
+  let gx = 0, gy = 0;
+  const maxCols = sideGridCols;
+  const objectSize = vec2(cellSize * 0.6);
 
-          // 🔹 Create visible EngineObject for this building type
-          const obj = new EngineObject(pos, objectSize);
-          obj.color = color;
-          obj.type = key;
-          obj.gridPos = { x: gx, y: gy };
+  for (const { key, count, color } of layout) {
+    for (let i = 0; i < count; i++) {
+      // Flip Y so top row is at highest y
+      const flippedY = (sideGridRows - 1) - gy;
+      const pos = sideGridToWorld(gx, flippedY);
 
-          // Store it in our reference dictionary
-          sideGridBuildings[key].push(obj);
+      // 🔹 Create visible EngineObject for this building type
+      const obj = new EngineObject(pos, objectSize);
+      obj.color = color;
+      obj.type = key;
+      obj.gridPos = { x: gx, y: gy };
 
-          // Advance placement
-          gx++;
-          if (gx >= maxCols) {
-            gx = 0;
-            gy++;
-          }
-        }
+      // Store it in our reference dictionary
+      sideGridBuildings[key].push(obj);
+
+      // Advance placement
+      gx++;
+      if (gx >= maxCols) {
+        gx = 0;
+        gy++;
       }
-
-      enqueueMessage("Side grid EngineObjects initialized!");
     }
+  }
+
+  enqueueMessage("Side grid EngineObjects initialized!");
+}
 
     // 🔹 Input
     function onCanvasMove(event) {
@@ -396,11 +400,52 @@
     }
 
     function onNexusPlacementPhaseClick() {
-      
+      if (gameState.active === TOP_ACTIVE) {
+        if (hoverCell) {
+          let grid_coords = worldToGrid({x: hoverCell.x, y: hoverCell.y});
+          console.log(grid_coords);
+
+
+          enqueueMessage("Player 1 has placed their Nexus.");
+
+        }
+      } else {
+        if (hoverCell) {
+          enqueueMessage("Player 2 has placed their Nexus.");
+          gameState.player_bottom.location = worldToGrid(hoverCell.x, hoverCell.y);
+          console.log(gameState.player_bottom.location);
+        }
+      }
     }
 
-    function onEconomyPhaseClick() {
+    // Global reference for currently selected building
+    let selectedBuilding = null;
 
+    function onEconomyPhaseClick() {
+      if (!hoverSideCell) {
+        // Click was not on any side grid cell
+        selectedBuilding = null;
+        enqueueMessage("No building selected.");
+        return;
+      }
+
+      const { x: gx, y: gy } = hoverSideCell;
+
+      // Loop through all side grid building types
+      for (const key in sideGridBuildings) {
+        for (const obj of sideGridBuildings[key]) {
+          // Check if this object occupies the clicked side grid cell
+          if (obj.gridPos.x === gx && obj.gridPos.y === gy) {
+            selectedBuilding = obj;
+            enqueueMessage(`${obj.type} selected!`);
+            return;
+          }
+        }
+      }
+
+      // If we reach here, clicked an empty cell
+      selectedBuilding = null;
+      enqueueMessage("No building in clicked cell.");
     }
 
     function onAttackPhaseClick() {
@@ -408,12 +453,6 @@
     }
 
     function onCanvasClick() {
-      // if (!hoverCell) return;
-      // player.targetGrid = { ...hoverCell };
-      // enqueueMessage(`Clicked main cell (${hoverCell.x}, ${hoverCell.y})`);
-
-      // todo: check game state, callback accordingly
-
       if (gameState.phase == TURN_PHASE_ECONOMY) {
         onEconomyPhaseClick();
       } else if (gameState.phase == TURN_PHASE_ATTACK) {
@@ -553,7 +592,7 @@
     // side grid
 
     const sideGridCols = 2;
-    const sideGridRows = 7;
+    const sideGridRows = 6;
     const sideGridWidth = sideGridCols * cellSize;
     const sideGridHeight = sideGridRows * cellSize;
     const sideGridOrigin = vec2(
@@ -653,21 +692,32 @@
 
 
     function gameRenderPost() {
-      // drawRect(player.pos, player.size, player.color);
-      renderMessages();
+        renderMessages();
 
-      const gridInfo = `Grid: Player ${gameState.active === TOP_ACTIVE ? '1 (Top)' : '2 (Bottom)'} | State: ${gameState}`;
-      drawText(gridInfo, vec2(-gridWidth/2, gridHeight/2 + 1), 0.5, new Color(1,1,1));
+        const phase_labels = ['NEXUS PLACEMENT', 'ECONOMY', 'ATTACK'];
 
-      drawText(`Pool (Economy: ${gameState.pool.economy})`, 
-        vec2(sideGridOrigin.x + sideGridWidth/2, sideGridOrigin.y + sideGridHeight + 0.5),
-        0.5, new Color(1,1,1,0.6)
-      );
-    }
+        const gridInfo = `Grid: Player ${gameState.active === TOP_ACTIVE ? '1 (Top)' : '2 (Bottom)'} | Phase: ${phase_labels[gameState.phase]} | Turn: ${gameState.turn}`;
+        drawText(gridInfo, vec2(-gridWidth / 2, gridHeight / 2 + 1), 0.5, new Color(1, 1, 1));
+
+        drawText(`Pool (Economy: ${gameState.pool.economy})`, 
+            vec2(sideGridOrigin.x + sideGridWidth / 2, sideGridOrigin.y + sideGridHeight + 0.5),
+            0.5, new Color(1, 1, 1, 0.6)
+        );
+
+        const side_labels = ['Horizontal Mirrors (Cost: 1E/ea)', '', 'Diagonal Mirrors (Cost: 1E/ea)', '', 'Pylons (Cost: 1E/ea)', '','Nexus Pieces']
+
+        // Draw text to the right of each grid row
+        for (let row = 0; row < sideGridRows; row++) {
+          const y = sideGridOrigin.y + row * cellSize + cellSize / 2; // center of the row
+          const x = sideGridOrigin.x + sideGridWidth + 0.2; // just right of the side grid
+          drawText(`${side_labels[row]}`, vec2(x + 5, y), 0.4, new Color(1, 1, 0.5)); // yellowish text
+        }
+      }
 
     document.getElementById('startBtn').addEventListener('click', () => {
       document.getElementById('menu').style.display = 'none';
       engineInit(gameInit, gameUpdate, gameRender, gameRenderPost);
+      // enqueueMessage("Player 1 is placing their Nexus.");
     });
   </script>
 </body>
