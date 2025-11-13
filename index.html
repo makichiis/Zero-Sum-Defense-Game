@@ -318,7 +318,39 @@
       // drawDiagonalOverlay(0, halfY, gridCellCountX, gridCellCountY, new Color(0.7, 0.7, 0.7, 0.1));
     }
 
-    
+    // side grid
+
+    const sideGridCols = 2;
+    const sideGridRows = 8;
+    const sideGridWidth = sideGridCols * cellSize;
+    const sideGridHeight = sideGridRows * cellSize;
+    const sideGridOrigin = vec2(
+      boardOrigin.x + gridWidth + cellSize * 2,  // small gap
+      boardOrigin.y
+    );
+
+    function drawSideGrid() {
+      const gridColor = new Color(1, 1, 1, 0.25);
+      for (let x = 0; x <= sideGridCols; x++)
+        drawLine(
+          vec2(sideGridOrigin.x + x * cellSize, sideGridOrigin.y),
+          vec2(sideGridOrigin.x + x * cellSize, sideGridOrigin.y + sideGridHeight),
+          0.03, gridColor
+        );
+      for (let y = 0; y <= sideGridRows; y++)
+        drawLine(
+          vec2(sideGridOrigin.x, sideGridOrigin.y + y * cellSize),
+          vec2(sideGridOrigin.x + sideGridWidth, sideGridOrigin.y + y * cellSize),
+          0.03, gridColor
+        );
+
+      // transparent background
+      drawRect(
+        vec2(sideGridOrigin.x + sideGridWidth/2, sideGridOrigin.y + sideGridHeight/2),
+        vec2(sideGridWidth, sideGridHeight),
+        new Color(1,1,1,0.05)
+      );
+    }
 
     // 🔹 Main render
     function gameRender() {
@@ -334,6 +366,8 @@
         drawRect(c, vec2(cellSize, cellSize), new Color(0.2, 0.6, 1, 0.3));
       }
 
+      drawSideGrid();
+
       updateMessages();
     }
 
@@ -343,6 +377,11 @@
 
       const gridInfo = `Grid: (${player.gridPos.x}, ${player.gridPos.y}) | State: ${gameState}`;
       drawText(gridInfo, vec2(-gridWidth/2, gridHeight/2 + 1), 0.5, new Color(1,1,1));
+
+      drawText(`Pool (Economy: ${gameState.pool.economy})`, 
+        vec2(sideGridOrigin.x + sideGridWidth/2, sideGridOrigin.y + sideGridHeight + 0.5),
+        0.5, new Color(1,1,1,0.6)
+      );
     }
 
     document.getElementById('startBtn').addEventListener('click', () => {
