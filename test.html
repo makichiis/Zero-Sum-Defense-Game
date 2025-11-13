@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LittleJS Demo with Messages</title>
+<style>
+      body {
+      margin: 0;
+      background: #222;
+      color: white;
+      text-align: center;
+      font-family: sans-serif;
+    }
+
+    /* Left-side text box */
+    #textBox {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 300px;
+        height: 100vh;
+        background: rgb(255*0.1,255*0.1,255*0.1); /* semi-transparent */
+        color: white;
+        padding: 10px;
+        z-index: 10;
+    }
+
+
+</style>
+</head>
+<body>
+
+<div id="textBox"></div>
+<canvas id="gameCanvas"></canvas>
+
+<!-- LittleJS CDN -->
+<script src="https://unpkg.com/littlejsengine@latest/dist/littlejs.min.js"></script>
+
+<script type="module">
+let player;
+const textBox = document.getElementById('textBox');
+
+// ----- Message Queue -----
+let messages = [];          // Array of message objects {text, y, targetY}
+const maxMessages = 20;
+const lineHeight = 20;      // Height of each message
+const targetYStart = 10;    // Top position for first message
+
+function enqueueMessage(text) {
+    // Add new message at bottom
+    messages.push({ text: text, y: targetYStart + messages.length * lineHeight });
+
+    // Remove oldest if exceeding maxMessages
+    if (messages.length > maxMessages) {
+        messages.shift();
+    }
+
+    // Update target positions for smooth sliding
+    for (let i = 0; i < messages.length; i++) {
+        messages[i].targetY = targetYStart + i * lineHeight;
+    }
+}
+
+// Smooth update of message positions (no delta time needed)
+function updateMessages() {
+    const speed = 0.2; // smaller = slower slide
+    for (let msg of messages) {
+        if (msg.targetY === undefined) msg.targetY = msg.y;
+        msg.y += (msg.targetY - msg.y) * speed;
+    }
+}
+
+// Render messages in the left box
+function renderMessages() {
+    textBox.innerHTML = ''; // Clear previous messages
+    for (let msg of messages) {
+        const div = document.createElement('div');
+        div.style.position = 'absolute';
+        div.style.top = `${msg.y}px`;
+        div.style.left = `10px`;
+        div.style.color = 'white';
+        div.style.fontSize = '16px';
+        div.textContent = msg.text;
+        textBox.appendChild(div);
+    }
+}
+
+// ----- LittleJS Game -----
+function gameInit() {
+    player = new EngineObject(vec2(0,0), vec2(1,1));
+    player.color = new Color(0.2, 0.8, 1);
+
+    // Example initial messages
+    enqueueMessage("Welcome to the game!");
+    enqueueMessage("Use arrows to move.");
+}
+
+function gameUpdate() {
+    const speed = 0.1;
+    if (keyIsDown('ArrowLeft'))   player.pos.x -= speed;
+    if (keyIsDown('ArrowRight'))  player.pos.x += speed;
+    if (keyIsDown('ArrowUp'))     player.pos.y += speed;
+    if (keyIsDown('ArrowDown'))   player.pos.y -= speed;
+
+    // Smoothly update messages
+    updateMessages();
+}
+
+function gameRender() {
+    drawRect(vec2(0,0), mainCanvasSize, new Color(0.1,0.1,0.1));
+}
+
+function gameRenderPost() {
+    drawRect(player.pos, player.size, player.color);
+
+    // Render messages in DOM
+    renderMessages();
+}
+
+// Start the engine
+window.onload = function() { 
+    engineInit(gameInit, gameUpdate, gameRender, gameRenderPost);
+}
+
+// Example: adding messages every 2 seconds
+let count = 0;
+setInterval(() => {
+    count++;
+    enqueueMessage("Message " + count);
+}, 100);
+
+</script>
+
+</body>
+</html>

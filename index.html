@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>LittleJS 5x5 Board with Hover & Cursor Change</title>
+  <title>Zero-Sum Defense</title>
   <style>
     body {
       margin: 0;
@@ -11,12 +11,16 @@
       text-align: center;
       font-family: sans-serif;
     }
-    #gameCanvas {
-      background: #333;
-      display: none; /* hidden until start */
-      margin: 20px auto;
-      image-rendering: pixelated;
-      cursor: default; /* default cursor */
+    #textBox {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 300px;
+      height: 100vh;
+      background: rgb(255*0.1,255*0.1,255*0.1); /* semi-transparent */
+      color: white;
+      padding: 10px;
+      z-index: 10;
     }
     #menu {
       margin-top: 100px;
@@ -30,6 +34,7 @@
       color: #222;
       cursor: pointer;
       transition: background 0.2s;
+      overflow: hidden;
     }
     button:hover {
       background: #ffc933;
@@ -45,117 +50,303 @@
     <button id="startBtn">New Game</button>
   </div>
 
+  <div id="textBox"></div>
+
   <!-- ✅ Game Canvas -->
   <!-- <canvas id="gameCanvas" width="640" height="360"></canvas> -->
 
   <!-- ✅ LittleJS CDN -->
   <script src="https://unpkg.com/littlejsengine@latest/dist/littlejs.min.js"></script>
 
+
+
   <script>
-    let player;
-    const gridSize = 10;
+    const gridCellCountX = 7;
+    const gridCellCountY = 10;
     const cellSize = 2;
-    // Compute total grid dimensions
-    const gridWidth = gridSize * cellSize;
-    const gridHeight = gridSize * cellSize;
+    const gridWidth = gridCellCountX * cellSize;
+    const gridHeight = gridCellCountY * cellSize;
     const boardOrigin = vec2(-gridWidth/2, -gridHeight/2);
 
-    let targetPos;
-    let hoverCell = null; // {x, y} or null
+    let player;
 
-    // Called once at start
-    function gameInit() {
-      player = new EngineObject(vec2(0, 0), vec2(cellSize * 0.8, cellSize * 0.8));
-      player.color = new Color(0.2, 0.8, 1);
-      targetPos = player.pos.copy();
+    let hoverCell = null;
+    let messages = [];
+    //let gameState = 'topActive'; // 🔹 Can toggle between "topActive" and "bottomActive"
 
-      // Mouse events
-      mainCanvas.addEventListener('click', onCanvasClick);
-      mainCanvas.addEventListener('mousemove', onCanvasMove);
-      mainCanvas.addEventListener('mouseleave', onCanvasLeave);
+    
+
+    // Define a Building class
+    class Building {
+      constructor(x, y, health) {
+        this.position = { x: Math.floor(x), y: Math.floor(y) }; // ensure integers
+        this.health = health;
+      }
+
+      // Example: damage the building
+      takeDamage(amount) {
+        this.health = Math.max(0, this.health - amount);
+      }
+
+      // Example: check if destroyed
+      isDestroyed() {
+        return this.health <= 0;
+      }
     }
 
+    // Define a Player class
+    class Player {
+      constructor(name) {
+        this.name = name;
+        this.buildings = []; // list of Building instances
+        this.economy = 0;
+      }
+
+      // Add a new building to the player
+      addBuilding(x, y, health) {
+        const building = new Building(x, y, health);
+        this.buildings.push(building);
+        return building;
+      }
+
+      // Remove destroyed buildings
+      cleanupDestroyedBuildings() {
+        this.buildings = this.buildings.filter(b => !b.isDestroyed());
+      }
+
+      // Example: get building at a specific position
+      getBuildingAt(x, y) {
+        return this.buildings.find(b => b.position.x === x && b.position.y === y);
+      }
+    }
+
+    const TOP_ACTIVE = 'topActive';
+    const BOTTOM_ACTIVE = 'bottomActive';
+
+    const TURN_NEXUS_PLACEMENTS = 0;
+    const TURN_PHASE_ECONOMY = 1;
+    const TURN_PHASE_ATTACK = 2;
+
+    const POOL_MAXIMUM = 10;
+
+    const BUILDING_NEXUS = { cost: 999, health: 10, count: 2 };
+    const BUILDING_PYLON = { cost: 1, health: 1, count: 4 };
+    const BUILDING_DIAGONAL_MIRROR = { cost: 1, health: 1, count: 4 };
+    const BUILDING_HORIZONTAL_MIRROR = { cost: 1, health: 1, count: 4 };
+
+    let gameState = {
+      active: TOP_ACTIVE,
+      phase: TURN_NEXUS_PLACEMENTS,
+      turn: 0,
+      pool: {
+        economy: POOL_MAXIMUM,
+        buildings: {
+          NEXUS: BUILDING_NEXUS,
+          PYLONS: BUILDING_PYLON,
+          DIAGONAL_MIRRORS: BUILDING_DIAGONAL_MIRROR,
+          HORIZONTAL_MIRROR: BUILDING_HORIZONTAL_MIRROR
+        }
+      },
+      player_top: new Player("top"),
+      player_bottom: new Player("bottom")
+    }
+
+    const maxMessages = 20, lineHeight = 20, targetYStart = 10;
+
+    // 🔹 Coordinate conversion
+    function gridToWorld(gx, gy) {
+      return vec2(
+        boardOrigin.x + gx * cellSize + cellSize / 2,
+        boardOrigin.y + gy * cellSize + cellSize / 2
+      );
+    }
+    function worldToGrid(worldPos) {
+      const gx = Math.floor((worldPos.x - boardOrigin.x) / cellSize);
+      const gy = Math.floor((worldPos.y - boardOrigin.y) / cellSize);
+      return { x: gx, y: gy };
+    }
+
+    // 🔹 Messages
+    function enqueueMessage(text) {
+      messages.push({ text, y: targetYStart + messages.length * lineHeight });
+      if (messages.length > maxMessages) messages.shift();
+      for (let i = 0; i < messages.length; i++)
+        messages[i].targetY = targetYStart + i * lineHeight;
+    }
+    function updateMessages() {
+      const speed = 0.2;
+      for (let msg of messages) {
+        if (msg.targetY === undefined) msg.targetY = msg.y;
+        msg.y += (msg.targetY - msg.y) * speed;
+      }
+    }
+    function renderMessages() {
+      textBox.innerHTML = '';
+      for (let msg of messages) {
+        const div = document.createElement('div');
+        div.style.position = 'absolute';
+        div.style.top = `${msg.y}px`;
+        div.style.left = '10px';
+        div.style.color = 'white';
+        div.style.fontSize = '16px';
+        div.textContent = msg.text;
+        textBox.appendChild(div);
+      }
+    }
+
+    // 🔹 Initialization
+    function gameInit() {
+      player = new EngineObject(vec2(0, 0), vec2(cellSize * 0.8));
+      player.color = new Color(0.2, 0.8, 1);
+      player.gridPos = { x: 0, y: 0 };
+      player.targetGrid = { x: 0, y: 0 };
+
+      mainCanvas.addEventListener('click', onCanvasClick);
+      mainCanvas.addEventListener('mousemove', onCanvasMove);
+      mainCanvas.addEventListener('mouseleave', () => hoverCell = null);
+
+      enqueueMessage("Grid duplex system initialized!");
+      enqueueMessage("Press SPACE to toggle board mode.");
+      enqueueMessage("Click cells to move player.");
+    }
+
+    // 🔹 Input
     function onCanvasMove(event) {
       const rect = mainCanvas.getBoundingClientRect();
-      const mouseX = event.clientX - rect.left;
-      const mouseY = event.clientY - rect.top;
-      const worldPos = screenToWorld(vec2(mouseX, mouseY));
+      const worldPos = screenToWorld(vec2(
+        event.clientX - rect.left,
+        event.clientY - rect.top
+      ));
+      const g = worldToGrid(worldPos);
 
-      const gridX = Math.floor((worldPos.x - boardOrigin.x) / cellSize);
-      const gridY = Math.floor((worldPos.y - boardOrigin.y) / cellSize);
-
-      // Determine if inside board
-      if (gridX >= 0 && gridX < gridSize && gridY >= 0 && gridY < gridSize) {
-        hoverCell = { x: gridX, y: gridY };
-        mainCanvas.style.cursor = 'pointer'; // ✅ select cursor
+      if (g.x >= 0 && g.x < gridCellCountX && g.y >= 0 && g.y < gridCellCountY) {
+        hoverCell = g;
+        mainCanvas.style.cursor = 'pointer';
       } else {
         hoverCell = null;
         mainCanvas.style.cursor = 'default';
       }
     }
 
-    function onCanvasLeave() {
-      hoverCell = null;
-      mainCanvas.style.cursor = 'default';
-    }
-
-    function onCanvasClick(event) {
+    function onCanvasClick() {
       if (!hoverCell) return;
-      targetPos = vec2(
-        boardOrigin.x + hoverCell.x * cellSize + cellSize / 2,
-        boardOrigin.y + hoverCell.y * cellSize + cellSize / 2
-      );
+      player.targetGrid = { ...hoverCell };
+      enqueueMessage(`Move to grid (${hoverCell.x}, ${hoverCell.y})`);
     }
 
-    // Called every frame
+    document.addEventListener('keydown', e => {
+      if (e.code === 'Space') {
+        gameState.active = (gameState.active === TOP_ACTIVE) ? BOTTOM_ACTIVE : TOP_ACTIVE;
+        enqueueMessage(`Switched to state: ${gameState}`);
+      }
+    });
+
+    // 🔹 Update
     function gameUpdate() {
-      const moveSpeed = 0.05;
-      player.pos = player.pos.lerp(targetPos, moveSpeed);
+      const moveSpeed = 0.08;
+      const targetWorld = gridToWorld(player.targetGrid.x, player.targetGrid.y);
+      player.pos = player.pos.lerp(targetWorld, moveSpeed);
+      player.gridPos = worldToGrid(player.pos);
     }
 
-    // Render grid and highlight
-    function gameRender() {
-      drawRect(vec2(0, 0), mainCanvasSize, new Color(0.1, 0.1, 0.1));
-
-      // Draw grid lines
+    // 🔹 Render helpers
+    function drawGridLines() {
       const gridColor = new Color(0.4, 0.4, 0.4);
-      for (let x = 0; x <= gridSize; x++) {
+      for (let x = 0; x <= gridCellCountX; x++)
         drawLine(
           vec2(boardOrigin.x + x * cellSize, boardOrigin.y),
-          vec2(boardOrigin.x + x * cellSize, boardOrigin.y + gridSize * cellSize),
+          vec2(boardOrigin.x + x * cellSize, boardOrigin.y + gridCellCountY * cellSize),
           0.05,
           gridColor
         );
-      }
-      for (let y = 0; y <= gridSize; y++) {
+      for (let y = 0; y <= gridCellCountY; y++)
         drawLine(
           vec2(boardOrigin.x, boardOrigin.y + y * cellSize),
-          vec2(boardOrigin.x + gridSize * cellSize, boardOrigin.y + y * cellSize),
+          vec2(boardOrigin.x + gridCellCountX * cellSize, boardOrigin.y + y * cellSize),
           0.05,
           gridColor
         );
-      }
+    }
 
-      // Draw hover highlight (transparent blue)
-      if (hoverCell) {
-        const cellCenter = vec2(
-          boardOrigin.x + hoverCell.x * cellSize + cellSize / 2,
-          boardOrigin.y + hoverCell.y * cellSize + cellSize / 2
+    // 🔹 Diagonal line pattern over shaded cells
+    function drawDiagonalOverlay(xStart, yStart, xEnd, yEnd, color) {
+      const spacing = 0.5;
+      for (let y = boardOrigin.y + yStart * cellSize; y < boardOrigin.y + yEnd * cellSize + gridHeight; y += spacing) {
+        drawLine(
+          vec2(boardOrigin.x + xStart * cellSize, y),
+          vec2(boardOrigin.x + xEnd * cellSize, y - gridWidth),
+          0.05,
+          color
         );
-        const highlightColor = new Color(0.2, 0.6, 1, 0.3);
-        drawRect(cellCenter, vec2(cellSize, cellSize), highlightColor);
       }
     }
 
-    // Render player
+    // 🔹 Board render for "topActive"
+    function renderTopActiveBoard() {
+      drawRect(vec2(0, 0), mainCanvasSize, new Color(0.1, 0.1, 0.1));
+      drawGridLines();
+
+      const halfY = Math.floor(gridCellCountY / 2);
+      const darkColor = new Color(0, 0, 0, 0.4);
+
+      drawRect(
+        vec2(0, boardOrigin.y + (halfY * cellSize) / 2),
+        vec2(gridWidth, gridHeight / 2),
+        darkColor
+      );
+
+      // Add diagonal pattern
+      // drawDiagonalOverlay(0, 0, gridCellCountX, gridCellCountY-10, new Color(0.7, 0.7, 0.7, 0.1));
+    }
+
+    // 🔹 Board render for "bottomActive"
+    function renderBottomActiveBoard () {
+      // Base grid
+      drawRect(vec2(0, 0), mainCanvasSize, new Color(0.1, 0.1, 0.1));
+      drawGridLines();
+
+      const halfY = Math.floor(gridCellCountY / 2);
+      const darkColor = new Color(0, 0, 0, 0.4);
+
+      drawRect(
+        vec2(0, boardOrigin.y + (halfY * cellSize) + (gridHeight / 4)),
+        vec2(gridWidth, gridHeight / 2),
+        darkColor
+      );
+
+      // Add diagonal pattern
+      // drawDiagonalOverlay(0, halfY, gridCellCountX, gridCellCountY, new Color(0.7, 0.7, 0.7, 0.1));
+    }
+
+    
+
+    // 🔹 Main render
+    function gameRender() {
+      if (gameState.active == TOP_ACTIVE)
+        renderTopActiveBoard();
+      else if (gameState.active == BOTTOM_ACTIVE)
+        renderBottomActiveBoard();
+      else 
+        console.log("fat ough")
+
+      if (hoverCell) {
+        const c = gridToWorld(hoverCell.x, hoverCell.y);
+        drawRect(c, vec2(cellSize, cellSize), new Color(0.2, 0.6, 1, 0.3));
+      }
+
+      updateMessages();
+    }
+
     function gameRenderPost() {
       drawRect(player.pos, player.size, player.color);
+      renderMessages();
+
+      const gridInfo = `Grid: (${player.gridPos.x}, ${player.gridPos.y}) | State: ${gameState}`;
+      drawText(gridInfo, vec2(-gridWidth/2, gridHeight/2 + 1), 0.5, new Color(1,1,1));
     }
 
-    // ✅ Start game on button click
     document.getElementById('startBtn').addEventListener('click', () => {
       document.getElementById('menu').style.display = 'none';
-      // document.getElementById('gameCanvas').style.display = 'block';
       engineInit(gameInit, gameUpdate, gameRender, gameRenderPost);
     });
   </script>
