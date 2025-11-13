@@ -1,0 +1,30 @@
+{
+  "name": "zero-sum-defense-game",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/makichiis/Zero-Sum-Defense-Game.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/makichiis/Zero-Sum-Defense-Game/issues"
+  },
+  "homepage": "https://github.com/makichiis/Zero-Sum-Defense-Game#readme",
+  "dependencies": {
+    "littlejsengine": "^1.17.1"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "vite": "^7.2.2"
+  }
+}
