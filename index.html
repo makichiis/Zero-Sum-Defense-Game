@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Zero-Sum Defense</title>
+  <title>LittleJS 5x5 Board with Hover & Cursor Change</title>
   <style>
     body {
       margin: 0;
@@ -13,9 +13,10 @@
     }
     #gameCanvas {
       background: #333;
-      display: none; /* Hide canvas until game starts */
+      display: none; /* hidden until start */
       margin: 20px auto;
       image-rendering: pixelated;
+      cursor: default; /* default cursor */
     }
     #menu {
       margin-top: 100px;
@@ -25,58 +26,136 @@
       font-size: 18px;
       border: none;
       border-radius: 5px;
-      background: #0095ff;
+      background: #ffb400;
       color: #222;
       cursor: pointer;
       transition: background 0.2s;
     }
     button:hover {
-      background: #ff3344;
+      background: #ffc933;
     }
   </style>
 </head>
 <body>
-  <h1>Zero-Sum Defense</h1>
+  <h1>LittleJS + VanillaJS Grid Demo</h1>
 
+  <!-- ✅ Start Screen -->
   <div id="menu">
+    <p>Click below to start!</p>
     <button id="startBtn">New Game</button>
   </div>
 
-  <canvas id="gameCanvas" width="640" height="360"></canvas>
+  <!-- ✅ Game Canvas -->
+  <!-- <canvas id="gameCanvas" width="640" height="360"></canvas> -->
 
+  <!-- ✅ LittleJS CDN -->
   <script src="https://unpkg.com/littlejsengine@latest/dist/littlejs.min.js"></script>
 
   <script>
     let player;
+    const gridSize = 10;
+    const cellSize = 2;
+    // Compute total grid dimensions
+    const gridWidth = gridSize * cellSize;
+    const gridHeight = gridSize * cellSize;
+    const boardOrigin = vec2(-gridWidth/2, -gridHeight/2);
+
+    let targetPos;
+    let hoverCell = null; // {x, y} or null
 
     // Called once at start
     function gameInit() {
-      player = new EngineObject(vec2(0, 0), vec2(1, 1));
-      player.color = new Color(1, 0.8, 0.2);
+      player = new EngineObject(vec2(0, 0), vec2(cellSize * 0.8, cellSize * 0.8));
+      player.color = new Color(0.2, 0.8, 1);
+      targetPos = player.pos.copy();
+
+      // Mouse events
+      mainCanvas.addEventListener('click', onCanvasClick);
+      mainCanvas.addEventListener('mousemove', onCanvasMove);
+      mainCanvas.addEventListener('mouseleave', onCanvasLeave);
+    }
+
+    function onCanvasMove(event) {
+      const rect = mainCanvas.getBoundingClientRect();
+      const mouseX = event.clientX - rect.left;
+      const mouseY = event.clientY - rect.top;
+      const worldPos = screenToWorld(vec2(mouseX, mouseY));
+
+      const gridX = Math.floor((worldPos.x - boardOrigin.x) / cellSize);
+      const gridY = Math.floor((worldPos.y - boardOrigin.y) / cellSize);
+
+      // Determine if inside board
+      if (gridX >= 0 && gridX < gridSize && gridY >= 0 && gridY < gridSize) {
+        hoverCell = { x: gridX, y: gridY };
+        mainCanvas.style.cursor = 'pointer'; // ✅ select cursor
+      } else {
+        hoverCell = null;
+        mainCanvas.style.cursor = 'default';
+      }
+    }
+
+    function onCanvasLeave() {
+      hoverCell = null;
+      mainCanvas.style.cursor = 'default';
+    }
+
+    function onCanvasClick(event) {
+      if (!hoverCell) return;
+      targetPos = vec2(
+        boardOrigin.x + hoverCell.x * cellSize + cellSize / 2,
+        boardOrigin.y + hoverCell.y * cellSize + cellSize / 2
+      );
     }
 
     // Called every frame
     function gameUpdate() {
-      const speed = 0.05;
-
-      if (keyIsDown('ArrowLeft'))  player.pos.x -= speed;
-      if (keyIsDown('ArrowRight')) player.pos.x += speed;
-      if (keyIsDown('ArrowUp'))    player.pos.y += speed;
-      if (keyIsDown('ArrowDown'))  player.pos.y -= speed;
+      const moveSpeed = 0.05;
+      player.pos = player.pos.lerp(targetPos, moveSpeed);
     }
 
+    // Render grid and highlight
     function gameRender() {
       drawRect(vec2(0, 0), mainCanvasSize, new Color(0.1, 0.1, 0.1));
+
+      // Draw grid lines
+      const gridColor = new Color(0.4, 0.4, 0.4);
+      for (let x = 0; x <= gridSize; x++) {
+        drawLine(
+          vec2(boardOrigin.x + x * cellSize, boardOrigin.y),
+          vec2(boardOrigin.x + x * cellSize, boardOrigin.y + gridSize * cellSize),
+          0.05,
+          gridColor
+        );
+      }
+      for (let y = 0; y <= gridSize; y++) {
+        drawLine(
+          vec2(boardOrigin.x, boardOrigin.y + y * cellSize),
+          vec2(boardOrigin.x + gridSize * cellSize, boardOrigin.y + y * cellSize),
+          0.05,
+          gridColor
+        );
+      }
+
+      // Draw hover highlight (transparent blue)
+      if (hoverCell) {
+        const cellCenter = vec2(
+          boardOrigin.x + hoverCell.x * cellSize + cellSize / 2,
+          boardOrigin.y + hoverCell.y * cellSize + cellSize / 2
+        );
+        const highlightColor = new Color(0.2, 0.6, 1, 0.3);
+        drawRect(cellCenter, vec2(cellSize, cellSize), highlightColor);
+      }
     }
 
+    // Render player
     function gameRenderPost() {
       drawRect(player.pos, player.size, player.color);
     }
 
+    // ✅ Start game on button click
     document.getElementById('startBtn').addEventListener('click', () => {
       document.getElementById('menu').style.display = 'none';
-      document.getElementById('gameCanvas').style.display = 'block';
-
+      // document.getElementById('gameCanvas').style.display = 'block';
       engineInit(gameInit, gameUpdate, gameRender, gameRenderPost);
     });
   </script>
