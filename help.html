@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>LittleJS Demo (Working)</title>
+  <script src="https://killedbyapixel.github.io/LittleJS/build/littlejs.js"></script>
+</head>
+<body>
+<script type="module">
+import {
+  EngineInit, EngineObject, Vec2, Color, drawRect, inputDown, keyIsDown
+} from 'https://unpkg.com/littlejsengine@latest/dist/littlejs.min.js';
+
+// Globals
+let player;
+
+// Called once at start
+function gameInit() {
+  player = new EngineObject(new Vec2(0, 0), new Vec2(1, 1));
+  player.color = new Color(0, 1, 1);
+}
+
+// Called every frame to update logic
+function gameUpdate() {
+  const move = new Vec2(
+    (keyIsDown('ArrowRight') - keyIsDown('ArrowLeft')),
+    (keyIsDown('ArrowDown') - keyIsDown('ArrowUp'))
+  );
+  player.pos.add(move.scale(0.1));
+}
+
+// Called every frame to render
+function gameRender() {
+  drawRect(player.pos, player.size, player.color);
+}
+
+// Start the engine
+EngineInit(gameInit, gameUpdate, gameRender);
+</script>
+</body>
+</html>

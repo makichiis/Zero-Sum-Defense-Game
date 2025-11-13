@@ -71,6 +71,7 @@
     let player;
 
     let hoverCell = null;
+    let hoverSideCell = null;
     let messages = [];
     //let gameState = 'topActive'; // 🔹 Can toggle between "topActive" and "bottomActive"
 
@@ -153,6 +154,79 @@
 
     const maxMessages = 20, lineHeight = 20, targetYStart = 10;
 
+    /**
+     * Draw something centered in a specific grid cell.
+     *
+     * @param {Object} params - The configuration object.
+     * @param {number} params.gx - The cell X index (0..gridCellCountX-1).
+     * @param {number} params.gy - The cell Y index (0..gridCellCountY-1).
+     * @param {vec2} params.gridOrigin - The world-space origin (bottom-left corner) of the grid.
+     * @param {number} params.cellSize - The size of each grid cell.
+     * @param {number} params.gridCols - Total number of cells along X.
+     * @param {number} params.gridRows - Total number of cells along Y.
+     * @param {number} [params.width=cellSize] - The width of the thing to draw (in world units).
+     * @param {number} [params.height=cellSize] - The height of the thing to draw (in world units).
+     * @param {Color} [params.color=new Color(1,1,1,1)] - The color to draw with.
+     * @param {Image|Texture} [params.image] - Optional image or sprite to draw instead of a solid color.
+     */
+    function drawInGridCell({
+      gx,
+      gy,
+      gridOrigin,
+      cellSize,
+      gridCols,
+      gridRows,
+      width = cellSize,
+      height = cellSize,
+      color = new Color(1, 1, 1, 1),
+      image = null
+    }) {
+      // 🧮 Compute world position for the cell center
+      if (gx < 0 || gx >= gridCols || gy < 0 || gy >= gridRows) {
+        console.warn("drawInGridCell: cell out of bounds", gx, gy);
+        return;
+      }
+
+      const cx = gridOrigin.x + gx * cellSize + cellSize / 2;
+      const cy = gridOrigin.y + gy * cellSize + cellSize / 2;
+      const pos = vec2(cx, cy);
+      const size = vec2(width, height);
+
+      // 🟧 Draw either a colored rect or an image
+      if (image)
+        drawImage(image, pos, size, color);
+      else
+        drawRect(pos, size, color);
+    }
+
+    // 🟩 Alias for drawing inside the main grid
+    function drawInMainGrid(gx, gy, options = {}) {
+      drawInGridCell({
+        gx,
+        gy,
+        gridOrigin: boardOrigin,
+        cellSize,
+        gridCols: gridCellCountX,
+        gridRows: gridCellCountY,
+        ...options
+      });
+    }
+
+    // 🟧 Alias for drawing inside the side grid
+    function drawInSideGrid(gx, gy, options = {}) {
+      drawInGridCell({
+        gx,
+        gy,
+        gridOrigin: sideGridOrigin,
+        cellSize,
+        gridCols: sideGridCols,
+        gridRows: sideGridRows,
+        ...options
+      });
+    }
+
+
+
     // 🔹 Coordinate conversion
     function gridToWorld(gx, gy) {
       return vec2(
@@ -163,6 +237,34 @@
     function worldToGrid(worldPos) {
       const gx = Math.floor((worldPos.x - boardOrigin.x) / cellSize);
       const gy = Math.floor((worldPos.y - boardOrigin.y) / cellSize);
+      return { x: gx, y: gy };
+    }
+
+    /**
+     * Convert side grid (integer) coordinates → world-space coordinates.
+     * Returns the world-space center of the given side grid cell.
+     *
+     * @param {number} gx - Column index (0..sideGridCols-1)
+     * @param {number} gy - Row index (0..sideGridRows-1)
+     * @returns {vec2} World-space position of the cell center
+     */
+    function sideGridToWorld(gx, gy) {
+      return vec2(
+        sideGridOrigin.x + gx * cellSize + cellSize / 2,
+        sideGridOrigin.y + gy * cellSize + cellSize / 2
+      );
+    }
+
+    /**
+     * Convert a world-space position → side grid coordinates.
+     * Returns integer cell indices { x, y }.
+     *
+     * @param {vec2} worldPos - World-space position.
+     * @returns {{x: number, y: number}} Grid coordinates (integers)
+     */
+    function worldToSideGrid(worldPos) {
+      const gx = Math.floor((worldPos.x - sideGridOrigin.x) / cellSize);
+      const gy = Math.floor((worldPos.y - sideGridOrigin.y) / cellSize);
       return { x: gx, y: gy };
     }
 
@@ -196,18 +298,67 @@
 
     // 🔹 Initialization
     function gameInit() {
-      player = new EngineObject(vec2(0, 0), vec2(cellSize * 0.8));
-      player.color = new Color(0.2, 0.8, 1);
-      player.gridPos = { x: 0, y: 0 };
-      player.targetGrid = { x: 0, y: 0 };
+      // player = new EngineObject(vec2(0, 0), vec2(cellSize * 0.8));
+      // player.color = new Color(0.2, 0.8, 1);
+      // player.gridPos = { x: 0, y: 0 };
+      // player.targetGrid = { x: 0, y: 0 };
+
 
       mainCanvas.addEventListener('click', onCanvasClick);
       mainCanvas.addEventListener('mousemove', onCanvasMove);
       mainCanvas.addEventListener('mouseleave', () => hoverCell = null);
 
-      enqueueMessage("Grid duplex system initialized!");
-      enqueueMessage("Press SPACE to toggle board mode.");
-      enqueueMessage("Click cells to move player.");
+      // enqueueMessage("Grid duplex system initialized!");
+      // enqueueMessage("Press SPACE to toggle board mode.");
+      // enqueueMessage("Click cells to move player.");
+
+      initSideGridBuildings();
+    }
+
+    let sideGridBuildings = {}; // global reference
+    function initSideGridBuildings() {
+      sideGridBuildings = {
+        NEXUS: [],
+        PYLON: [],
+        DIAGONAL_MIRROR: [],
+        HORIZONTAL_MIRROR: []
+      };
+
+      const layout = [
+        { key: 'NEXUS', count: 2, color: new Color(0.9, 0.3, 0.9) },
+        { key: 'PYLON', count: 4, color: new Color(1.0, 0.6, 0.1) },
+        { key: 'DIAGONAL_MIRROR', count: 4, color: new Color(0.4, 0.8, 1.0) },
+        { key: 'HORIZONTAL_MIRROR', count: 4, color: new Color(0.6, 1.0, 0.6) },
+      ];
+
+      // Fill cells row by row
+      let gx = 0, gy = 0;
+      const maxCols = sideGridCols;
+      const objectSize = vec2(cellSize * 0.6);
+
+      for (const { key, count, color } of layout) {
+        for (let i = 0; i < count; i++) {
+          const pos = sideGridToWorld(gx, gy);
+
+          // 🔹 Create visible EngineObject for this building type
+          const obj = new EngineObject(pos, objectSize);
+          obj.color = color;
+          obj.type = key;
+          obj.gridPos = { x: gx, y: gy };
+
+          // Store it in our reference dictionary
+          sideGridBuildings[key].push(obj);
+
+          // Advance placement
+          gx++;
+          if (gx >= maxCols) {
+            gx = 0;
+            gy++;
+          }
+        }
+      }
+
+      enqueueMessage("Side grid EngineObjects initialized!");
     }
 
     // 🔹 Input
@@ -217,36 +368,115 @@
         event.clientX - rect.left,
         event.clientY - rect.top
       ));
-      const g = worldToGrid(worldPos);
 
-      if (g.x >= 0 && g.x < gridCellCountX && g.y >= 0 && g.y < gridCellCountY) {
-        hoverCell = g;
+      // --- Check main grid ---
+      const gMain = worldToGrid(worldPos);
+      if (gMain.x >= 0 && gMain.x < gridCellCountX &&
+          gMain.y >= 0 && gMain.y < gridCellCountY) {
+        hoverCell = gMain;
+        hoverSideCell = null;
         mainCanvas.style.cursor = 'pointer';
-      } else {
-        hoverCell = null;
-        mainCanvas.style.cursor = 'default';
+        return;
       }
+
+      // --- Check side grid ---
+      const gSide = worldToSideGrid(worldPos);
+      if (gSide.x >= 0 && gSide.x < sideGridCols &&
+          gSide.y >= 0 && gSide.y < sideGridRows) {
+        hoverSideCell = gSide;
+        hoverCell = null;
+        mainCanvas.style.cursor = 'pointer';
+        return;
+      }
+
+      // --- Not hovering any grid ---
+      hoverCell = null;
+      hoverSideCell = null;
+      mainCanvas.style.cursor = 'default';
+    }
+
+    function onNexusPlacementPhaseClick() {
+      
+    }
+
+    function onEconomyPhaseClick() {
+
+    }
+
+    function onAttackPhaseClick() {
+
     }
 
     function onCanvasClick() {
-      if (!hoverCell) return;
-      player.targetGrid = { ...hoverCell };
-      enqueueMessage(`Move to grid (${hoverCell.x}, ${hoverCell.y})`);
+      // if (!hoverCell) return;
+      // player.targetGrid = { ...hoverCell };
+      // enqueueMessage(`Clicked main cell (${hoverCell.x}, ${hoverCell.y})`);
+
+      // todo: check game state, callback accordingly
+
+      if (gameState.phase == TURN_PHASE_ECONOMY) {
+        onEconomyPhaseClick();
+      } else if (gameState.phase == TURN_PHASE_ATTACK) {
+        onAttackPhaseClick();
+      } else if (gameState.phase == TURN_NEXUS_PLACEMENTS) {
+        onNexusPlacementPhaseClick();
+      }
     }
 
     document.addEventListener('keydown', e => {
       if (e.code === 'Space') {
         gameState.active = (gameState.active === TOP_ACTIVE) ? BOTTOM_ACTIVE : TOP_ACTIVE;
-        enqueueMessage(`Switched to state: ${gameState}`);
+        enqueueMessage(`Switched to state: ${gameState}`);  
       }
     });
 
+    function isSideGridObjectVisible(obj) {
+      const halfY = Math.floor(gridCellCountY / 2);
+
+      if (gameState.active === TOP_ACTIVE) {
+        // Top half active → only show objects above halfY
+        return obj.gridPos.y >= halfY;
+      } else {
+        // Bottom half active → only show objects below halfY
+        return obj.gridPos.y < halfY;
+      }
+    }
+
+    function updateSideGridVisibility() {
+        const topActive = gameState.active === TOP_ACTIVE;
+
+        // define horizontal and vertical halves
+        const halfY = Math.floor(gridCellCountY / 2);
+        const halfX = Math.floor(gridCellCountX); // assuming full width counts
+
+        for (const key in sideGridBuildings) {
+            for (const obj of sideGridBuildings[key]) {
+                // Compute main grid coordinates
+                const mainGridY = Math.floor((obj.pos.y - boardOrigin.y) / cellSize);
+                const mainGridX = Math.floor((obj.pos.x - boardOrigin.x) / cellSize);
+
+                // Check if obj is inside main grid horizontally
+                const inX = mainGridX >= 0 && mainGridX < gridCellCountX;
+
+                if (!inX) continue;
+                if (topActive) {
+                    // top active → bottom side invisible if inside main grid
+                    obj.color.a = (mainGridY < halfY) ? 0 : 1;
+                } else {
+                    // bottom active → top side invisible if inside main grid
+                    obj.color.a = (mainGridY >= halfY) ? 0 : 1;
+                }
+            }
+        }
+    }
+
     // 🔹 Update
     function gameUpdate() {
-      const moveSpeed = 0.08;
-      const targetWorld = gridToWorld(player.targetGrid.x, player.targetGrid.y);
-      player.pos = player.pos.lerp(targetWorld, moveSpeed);
-      player.gridPos = worldToGrid(player.pos);
+      // const moveSpeed = 0.08;
+      // const targetWorld = gridToWorld(player.targetGrid.x, player.targetGrid.y);
+      // player.pos = player.pos.lerp(targetWorld, moveSpeed);
+      // player.gridPos = worldToGrid(player.pos);
+      updateSideGridVisibility(); 
     }
 
     // 🔹 Render helpers
@@ -280,6 +510,8 @@
         );
       }
     }
+
+    // TODO: Refactor top/bottom active board to only draw differences not same things (dont repeat yourself lmao)
 
     // 🔹 Board render for "topActive"
     function renderTopActiveBoard() {
@@ -321,13 +553,36 @@
     // side grid
 
     const sideGridCols = 2;
-    const sideGridRows = 8;
+    const sideGridRows = 7;
     const sideGridWidth = sideGridCols * cellSize;
     const sideGridHeight = sideGridRows * cellSize;
     const sideGridOrigin = vec2(
       boardOrigin.x + gridWidth + cellSize * 2,  // small gap
       boardOrigin.y
     );
+
+    // function drawSideGrid() {
+    //   const gridColor = new Color(1, 1, 1, 0.25);
+    //   for (let x = 0; x <= sideGridCols; x++)
+    //     drawLine(
+    //       vec2(sideGridOrigin.x + x * cellSize, sideGridOrigin.y),
+    //       vec2(sideGridOrigin.x + x * cellSize, sideGridOrigin.y + sideGridHeight),
+    //       0.03, gridColor
+    //     );
+    //   for (let y = 0; y <= sideGridRows; y++)
+    //     drawLine(
+    //       vec2(sideGridOrigin.x, sideGridOrigin.y + y * cellSize),
+    //       vec2(sideGridOrigin.x + sideGridWidth, sideGridOrigin.y + y * cellSize),
+    //       0.03, gridColor
+    //     );
+
+    //   // transparent background
+    //   drawRect(
+    //     vec2(sideGridOrigin.x + sideGridWidth/2, sideGridOrigin.y + sideGridHeight/2),
+    //     vec2(sideGridWidth, sideGridHeight),
+    //     new Color(1,1,1,0.05)
+    //   );
+    // }
 
     function drawSideGrid() {
       const gridColor = new Color(1, 1, 1, 0.25);
@@ -350,7 +605,29 @@
         vec2(sideGridWidth, sideGridHeight),
         new Color(1,1,1,0.05)
       );
+
+      // drawInSideGrid(1, 4, {
+      //   width: cellSize * 0.4,
+      //   height: cellSize * 0.4,
+      //   color: new Color(1, 0.5, 0, 1)
+      // });
+
+
+      // // 🟧 Draw orange square at center of each cell
+      // const orange = new Color(1, 0.5, 0, 1);
+      // const squareSize = cellSize * 0.4; // smaller than full cell
+      // for (let x = 0; x < sideGridCols; x++) {
+      //   for (let y = 0; y < sideGridRows; y++) {
+      //     const cx = sideGridOrigin.x + x * cellSize + cellSize / 2;
+      //     const cy = sideGridOrigin.y + y * cellSize + cellSize / 2;
+      //     drawRect(vec2(cx, cy), vec2(squareSize, squareSize), orange);
+      //   }
+      // }
     }
+
+    const color_player_top_hover = new Color(0.2, 0.6, 1, 0.6); 
+    const color_player_bottom_hover = new Color(0.9, 0.45, 0.0, 0.6);
+
 
     // 🔹 Main render
     function gameRender() {
@@ -363,7 +640,10 @@
 
       if (hoverCell) {
         const c = gridToWorld(hoverCell.x, hoverCell.y);
-        drawRect(c, vec2(cellSize, cellSize), new Color(0.2, 0.6, 1, 0.3));
+        drawRect(c, vec2(cellSize, cellSize), gameState.active === TOP_ACTIVE ? color_player_top_hover : color_player_bottom_hover);
+      } else if (hoverSideCell) {
+        const c = sideGridToWorld(hoverSideCell.x, hoverSideCell.y);
+        drawRect(c, vec2(cellSize, cellSize), gameState.active === TOP_ACTIVE ? color_player_top_hover : color_player_bottom_hover);
       }
 
       drawSideGrid();
@@ -371,11 +651,12 @@
       updateMessages();
     }
 
+
     function gameRenderPost() {
-      drawRect(player.pos, player.size, player.color);
+      // drawRect(player.pos, player.size, player.color);
       renderMessages();
 
-      const gridInfo = `Grid: (${player.gridPos.x}, ${player.gridPos.y}) | State: ${gameState}`;
+      const gridInfo = `Grid: Player ${gameState.active === TOP_ACTIVE ? '1 (Top)' : '2 (Bottom)'} | State: ${gameState}`;
       drawText(gridInfo, vec2(-gridWidth/2, gridHeight/2 + 1), 0.5, new Color(1,1,1));
 
       drawText(`Pool (Economy: ${gameState.pool.economy})`, 
