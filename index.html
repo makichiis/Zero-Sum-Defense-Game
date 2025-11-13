@@ -42,7 +42,7 @@
   </style>
 </head>
 <body>
-  <h1>LittleJS + VanillaJS Grid Demo</h1>
+  <h1>Zero-Sum Defense</h1>
 
   <!-- ✅ Start Screen -->
   <div id="menu">
@@ -424,10 +424,10 @@
     }
 
     document.addEventListener('keydown', e => {
-      if (e.code === 'Space') {
-        gameState.active = (gameState.active === TOP_ACTIVE) ? BOTTOM_ACTIVE : TOP_ACTIVE;
-        enqueueMessage(`Switched to state: ${gameState}`);  
-      }
+      // if (e.code === 'Space') {
+      //   gameState.active = (gameState.active === TOP_ACTIVE) ? BOTTOM_ACTIVE : TOP_ACTIVE;
+      //   enqueueMessage(`Switched to state: ${gameState}`);  
+      // }
     });
 
     function isSideGridObjectVisible(obj) {
